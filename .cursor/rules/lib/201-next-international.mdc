@@ -1,0 +1,342 @@
+---
+description: how to translate a nextjs application
+globs: *.tsx, env, 
+---
+# Règles d'Internationalisation avec Next.js
+
+## Structure du Projet
+
+Pour l'internationalisation dans Next.js, suivez cette structure de projet :
+
+```
+/
+├── app/
+│   └── [locale]/
+│       └── page.tsx
+├── locales/
+│   ├── client.ts
+│   ├── en.ts
+│   ├── fr.ts
+│   └── server.ts
+├── src/
+│   └── providers/
+│       └── i18nProvider.tsx
+├── middleware.ts
+```
+
+## Configuration
+
+1. Installez les dépendances nécessaires :
+
+```bash
+npm install next-international
+```
+
+2. Créez le fichier `middleware.ts` à la racine de votre application :
+
+```typescript
+// /middleware.ts
+import createMiddleware from 'next-intl/middleware';
+ 
+const I18nMiddleware = createI18nMiddleware({
+  locales: ["en", "fr"],
+  defaultLocale: "en",
+});
+export default async function middleware(req:NextRequest) {
+   return I18nMiddleware(req);
+}
+ 
+export const config = {
+  matcher: ['/((?!api|_next|.*\\..*).*)']
+};
+```
+3. Create a provider
+
+```typescript
+// /src/providers/i18nProvider.tsx 
+import { I18nProviderClient } from "../../locales/client";
+import { PropsWithChildren } from "react";
+export const LocaleProvider = (props:PropsWithChildren<{locale:string}>) => {
+    return (
+        <I18nProviderClient locale={props.locale}>
+            {props.children}
+        </I18nProviderClient>
+    )
+}
+```
+
+4. Configurez le dossier locales
+Créer le dossier locales à la racine
+```typescript
+// /locales/client.ts
+"use client"
+import { createI18nClient } from 'next-international/client'
+ 
+export const { useI18n, useScopedI18n, I18nProviderClient,useCurrentLocale,useChangeLocale } = createI18nClient({
+  en: () => import('./en'),
+  fr: () => import('./fr')
+})
+```
+
+```typescript
+// /locales/server.ts
+import { createI18nServer } from 'next-international/server'
+ 
+export const { getI18n, getScopedI18n, getStaticParams,getCurrentLocale } = createI18nServer({
+  en: () => import('./en'),
+  fr: () => import('./fr')
+})
+```
+
+```typescript
+// /locales/en.ts
+export default {  
+    // A scoped
+   userBtn: {
+    logOut: "Logout",
+    settings: "Settings",
+    theme: "Theme",
+    language: "Language",
+    french: "French",
+    english: "English",
+  },
+   // A variable
+  greeting:"hello!"
+   
+} as const;
+```
+
+```typescript
+// /locales/fr.ts
+export default {
+   
+   // A scope
+   userBtn: {
+    logOut: "Se déconnecter",
+    settings: "Paramètres",
+    theme: "Thème",
+    language: "Langue",
+    french: "Français",
+    english: "Anglais",
+  },  
+   // A variable
+   greeting: "Bonjour!"
+} as const;
+```
+
+
+
+## Usage
+**Exemple with `getScopedI18n` for a server component and `useScopedI18n` for a client component**
+```typescript
+// In a server component
+import { getScopedI18n } from "@/locales/server";
+import { Button } from "@/src/components/ui/button";
+export default async function ServerComponent() {
+  // Using a scope
+  const userBtnT = await getScopedI18n("userBtn");
+  return (
+    <>    
+    <button>{"UserBtnTlogOut"}</button>
+   <Button>{"UserBtnT.settings"}</Button>;
+  </>
+  ) 
+   
+}
+
+// In a client component
+'use client';
+import { useScopedI18n } from "@/locales/client";
+import { Button } from "@/src/components/ui/button";;
+
+export default function ClientComponent() {
+  // Using a scope
+   const userBtnT = useScopedI18n("userBtn");
+    return (
+    <>    
+    <button>{"UserBtnTlogOut"}</button>
+   <Button>{"UserBtnT.settings"}</Button>;
+  </>
+  ) 
+}
+```
+**Exemple with `getI18n` for a server component and `useI18n` for a client component**
+```typescript
+// In a server component
+import { Button } from "@/src/components/ui/button";
+import { getI18n } from "@/locales/server";
+export default async function ServerComponent() {
+   // only one variable to translate uses the constant `t`
+  const t = await getI18n();
+ return <p>{t('greeting')}</p>;
+}
+
+// In a client component
+'use client';
+import { Button } from "@/src/components/ui/button";;
+import { useI18n } from "@/locales/client";
+export default function ClientComponent() {
+    // only one variable to translate uses the constant `t`
+   const t = useI18n();
+   return <p>{t('greeting')}</p>;
+}
+```
+
+**Variables In messages**
+This involves translating texts that include variables
+
+Configuration of `en.ts` and `fr.ts` files
+```typescript
+// locales/en.ts
+export default {
+    
+   // A constant
+  greeting:"hello {name}!"
+   
+} as const;
+```
+
+```typescript
+// /locales/fr.ts
+export default {
+ 
+   // A constant
+   greeting: "Bonjour {name}!"
+} as const;
+```
+
+**In a component**
+```typescript
+// In a server component
+import { Button } from "@/src/components/ui/button";
+import { getI18n } from "@/locales/server";
+export default async function ServerComponent() {
+   // only one variable to translate uses the constant `t`
+  const t = await getI18n();
+ return <p>{t('greeting', { name: 'Alice' })}</p>;
+}
+
+// In a client component
+'use client';
+import { Button } from "@/src/components/ui/button";;
+import { useI18n } from "@/locales/client";
+export default function ClientComponent() {
+  // only one variable to translate uses the constant `t`
+   const t = useI18n();
+   return <p>{t('greeting', { name: 'Alice' })}</p>;
+}
+```
+
+
+## Configuration du layout.tsx
+```typescript
+// app/[locale]/layout.tsx
+import type { Metadata } from "next";
+import { Geist, Geist_Mono } from "next/font/google";
+import { cn } from "@/src/lib/utils";
+import "../globals.css";
+import { LocaleProvider } from "@/src/providers/i18nProvider";
+import { Anek_Telugu } from "next/font/google";
+
+const geistSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+});
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
+const AnekTelugu = Anek_Telugu({
+  subsets: ["latin"],
+  variable: "--font-caption",
+});
+export const metadata: Metadata = {
+  title: "lyradCode",
+  description: "Generated by create next app",
+};
+
+export default async function RootLayout({
+  children,
+  params,
+}: Readonly<{
+  children: React.ReactNode;
+  params: {
+    locale: string;
+  };
+}>) {
+  const { locale } = await params;
+  return (
+    <html suppressHydrationWarning lang="en">
+      <body
+        
+        className={cn(
+          geistSans.variable,
+          geistMono.variable,
+          AnekTelugu.variable,
+          "antialiased h-full w-full bg-background font-sans text-foreground"
+        )}
+      >    
+              <LocaleProvider locale={locale}>
+                <div className="relative flex h-screen flex-col overflow-auto overflow-x-hidden bg-background text-foreground">
+                  {children}
+               
+                </div>
+              </LocaleProvider>           
+                 
+      </body>
+    </html>
+  );
+}
+
+```
+## Recuperer la langue actruelle
+
+```typescript
+// Import use client for only client components
+"use client"
+import {  
+  useCurrentLocale,
+} from "@/locales/client";
+// In aclient component
+const locale = useCurrentLocale();
+
+// Not client component
+import {  
+  getCurrentLocale,
+} from "@/locales/server";
+// In a server component
+const locale = getCurrentLocale();
+```
+## Changer la langue actuelle 
+```typescript
+"use client"
+import {
+  useChangeLocale,  
+} from "@/locales/client";
+ const changeLocale = useChangeLocale();
+ // A button to change the locale
+ // /...
+```
+
+
+
+## Rules
+- translate all texts except variables
+- Use explicit and descriptive keys
+- you must use shadcn ui for components if they are available
+- use scopes to translate pages and components only if there is more than one word to translate otherwise use variables
+- Move all my routes inside the `[locales]` folder
+- Use the `en.ts` and `fr.ts` files to translate
+- Do not add the `params` to retrieve the language(`locale`) to pages and components
+- Do not use the language(`locale`) when you define a link (when you want to redirect to a page for example) (e.g., ❌`/{locale/my-link}`, ✅`/my-link`)
+- Use what is written in the `comments` to help you
+- Respect the syntax of the `constants` and `scopes` used in my examples for the translation
+
+
+
+
+
+## Outils Recommandés
+- @next-international - Pour l'internationalisation
+- [TypeScript](mdc:https:/www.typescriptlang.org) - Pour le typage des traductions

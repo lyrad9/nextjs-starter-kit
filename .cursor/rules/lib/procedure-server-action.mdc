@@ -1,0 +1,45 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+## Context
+
+Procedures allow you to add additional context to a set of server actions, such as the `userId` of the caller. They are useful for ensuring that certain actions can only be called if specific conditions are met, such as the user being logged in or having certain permissions.
+
+Exemple d'importations nécessaires:
+
+```tsx
+"use server";
+import { createServerActionProcedure } from "zsa";
+import { auth } from "@/auth";
+```
+## Usage
+
+Cette procédure est utilisée pour vérifier que l'utilisateur est connecté.
+```tsx
+const authedProcedure = createServerActionProcedure().handler(async () => {
+  try {
+    const session = await auth();
+    if (!session.user) {
+      throw new Error("NOT_AUTHORIZED", "admin not authentificated");
+    }
+    return session.user;
+  } catch {
+    throw new Error("NOT_AUTHORIZED", "admin not authentificated");
+  }
+});
+```
+
+Cette procédure est utilisée pour vérifier que l'utilisateur est un admin. Tu utiliseras dans un premier temps la fonction `authedProcedure` pour vérifier si l'utilisateur est connecté.
+
+```tsx
+const isAdminProcedure = createServerActionProcedure(authedProcedure).handler(async({ctx }) => {
+  
+    
+    if (ctx.user.role !== "admin") {
+      throw new Error("User is not an admin")
+    }
+  return ctx.user
+});
+```

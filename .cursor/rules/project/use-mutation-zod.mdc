@@ -1,0 +1,14 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+## Context
+- It's likely that you may need to use your `server actions` for querying data on the client side. In order to do this, we recommend using zsa with `@tanstack/react-query` (aka React Query).
+- React Query is the leading solution for asynchronous querying and state management in React. By using React Query, you will have all the functionality of React Query for using your zsa server actions on the client side.
+
+
+Installation
+```bash
+npm i zsa-react-query @tanstack/react-query
+```

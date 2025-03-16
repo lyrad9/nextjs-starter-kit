@@ -1,0 +1,86 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+## Context
+zsa is the best library for building typesafe `server actions` in NextJS. Built for a simple, scalable developer experience.
+
+
+
+Exemple d'importation des composants nécessaires:
+
+```tsx
+"use server";
+import { createServerAction } from "zsa";
+import z from "zod";
+```
+**Input**
+- L'utilisateur doit fournir le nom du modèle Zod. Si ce n'est pas le cas, demandez-le.
+- L'utilisateur doit expliquer clairement ce que la server action doit faire.
+- L'utiliser doit préciser ou non une procedure à utiliser.
+
+**Output**
+Une server action définit comme suit:
+- **createServerAction**: initialise une action serveur.
+- **input**: définit le schéma d'entrée pour l'action à l'aide d'un schéma de zod.
+- **handler**: définit la logique de l'action.
+
+## Usage
+```tsx
+export const deleteProduct = createServerAction()
+  .input(
+    z.object({
+      id: z.string(),
+    
+    })
+  )
+  .handler(async ({ input }) => {
+    await prisma.product.delete({
+      where: {
+        id: productId,
+      },
+    });
+  });
+```
+
+## Usage with procedure
+```tsx
+// WithNameProcedure est le nom de la procedure
+export const deleteProduct = WithNameProcedure.createServerAction()
+  .input(
+    z.object({
+        id: z.string(),
+    })
+  )
+  .handler(async ({ input }) => {
+    await prisma.product.delete({
+      where: {
+        id: productId,
+      },
+    });
+  });
+```
+
+## Usage with form
+You can use a server action directly with a regular form. Set the type to "formData" to indicate that the input is a FormData object. 
+```tsx
+"use server"
+import z from "zod"
+import { createServerAction } from "zsa"
+
+export const produceNewMessage = createServerAction()
+  .input(
+    z.object({
+      message: z.string().min(5),
+    }),
+    {
+      type: "formData", 
+    }
+  )
+  .handler(async ({ input }) => {
+    await prisma.message.create({input.message})
+    
+  })
+```
+

@@ -1,0 +1,470 @@
+---
+description: how to implement authentication in my app with next-auth v5
+globs: *.ts, .env, *.tsx
+alwaysApply: false
+---
+## Context
+
+You need to use next-auth v5 to implement authentication in my project
+
+## Rules
+- For client components import the `signIn` function from ``next-auth/react`
+
+
+## Setting environment variables
+```env
+AUTH_GOOGLE_ID=""
+AUTH_GOOGLE_SECRET=""
+AUTH_GITHUB_ID=""
+AUTH_GITHUB_SECRET=""
+DATABASE_URL="postgresql://USER:PASSWORD@HOST:PORT/DATABASE?schema=SCHEMA" 
+
+```
+```env.local
+AUTH_SECRET=votre_secret_très_sécurisé
+AUTH_RESEND_KEY = ""
+```
+
+
+## File structure
+```
+/
+├── app/
+│   ├── api/
+│   │   └── auth/
+│   │       └── [...nextauth]/
+│   │           └── route.ts
+│   └── src/
+│       └── lib/
+│           ├── resend.ts
+│           └── sendVerificationRequest.ts
+├── auth.ts
+├── auth.config.ts
+├── next-auth.d.ts
+├── routes.ts
+├── middleware.ts
+├── db.ts
+```
+
+## Configuration initiale
+
+1. Installer ces dépendances:
+
+```bash
+npm install next-auth@beta
+npm install @prisma/client @auth/prisma-adapter
+npm install prisma --save-dev
+npm exec auth secret 
+```
+
+2. Invoquer le CLI prisma
+```bash
+npx prisma
+```
+3. Crée le modèle de fichier `schema.prisma`
+Cette commande fait deux choses:
+
+    - crée un nouveau répertoire appelé prisma qui contient un fichier appelé schema.prisma, qui contient le schéma Prisma avec la variable de connexion et les modèles de schéma de connexion à base de données.
+    - crée le .env fichier dans le répertoire racine du projet, qui est utilisé pour définir des variables d'environnement (telle que votre connexion à la base de données)
+
+Ignore l'exécution de cette commande  si le fichier `schema.prisma` existe déjà.
+```bash
+npx prisma init
+```
+Ajoute ceci au `schema.prisma`
+Si ces modèles ont déjà été créees fais juste la mise à jour de certains champs. Mais pour plus de sécurité, crée un autre fichier prisma toujours dans le même dossier.
+```prisma
+// Un utilisateur peut avoir plusieurs comptes
+model Account {
+  id                 String  @id @default(cuid())
+  userId             String  @map("user_id")
+  type               String
+  provider           String
+  providerAccountId  String  @map("provider_account_id")
+  refresh_token      String? @db.Text
+  access_token       String? @db.Text
+  expires_at         Int?
+  token_type         String?
+  scope              String?
+  id_token           String? @db.Text
+  session_state      String?
+ 
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+ 
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+   createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+}
+enum Role {
+  USER
+  ADMIN
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime? 
+  image         String? @db.Text
+  accounts      Account[]
+  role Role @default(USER)
+   createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  
+ 
+  @@map("users")
+}
+// Ce modele va contenir des informations des magiclink qu'on va envoyer a l'utilisateur 
+model VerificationToken {
+  identifier String
+  token      String
+  // a quel date le lien sexpire 
+  expires    DateTime 
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+   createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+}
+```
+
+4.Créer le fichier **routes.ts**
+```typescript
+// /routes.ts
+export const publicRoutes = [
+  "/", 
+   
+]
+export const authRoutes = [
+  "/sign-in",  
+  "/error",
+  "/verify-request"
+]
+export const apiAuthPrefix = "/api/auth"
+export const DEFAULT_REDIRECT = ""
+```
+
+5. Créer le fichier de configuration **db.ts**
+```typescript
+// /db.ts
+import { PrismaClient } from "@prisma/client"
+ 
+const globalForPrisma = globalThis as unknown as { prisma: PrismaClient }
+ 
+export const prisma = globalForPrisma.prisma || new PrismaClient()
+ 
+if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma
+```
+
+
+6. Créer le fichier de configuration **auth.config.ts**
+```typescript
+// /auth.config.ts
+import GitHub from "next-auth/providers/github"
+import Google from "next-auth/providers/google"
+import type { NextAuthConfig } from "next-auth"
+ 
+export default {   
+  providers: [  GitHub({
+      clientId: process.env.AUTH_GITHUB_ID,
+      clientSecret: process.env.AUTH_GITHUB_SECRET,
+    }),
+    Google({
+      clientId: process.env.AUTH_GOOGLE_ID,
+      clientSecret: process.env.AUTH_GOOGLE_SECRET,
+    }),]
+
+} satisfies NextAuthConfig
+```
+
+7. Créer le fichier de configuration **auth.ts**
+```typescript
+// /auth.ts
+import NextAuth from "next-auth"
+ import { PrismaAdapter } from "@auth/prisma-adapter"
+ 
+  import { PrismaClient } from "@prisma/client"
+import authConfig from "./auth.config"
+
+const prisma = new PrismaClient()
+
+export const { auth, handlers, signIn, signOut } = NextAuth({
+  adapter: PrismaAdapter(prisma),
+  session: { strategy: "jwt" },
+  trustHost:true,
+  providers:[  
+  ...authConfig.providers,
+  ],
+  pages: {
+    signIn: "/sign-in",
+    error: "/error",
+  },
+  callbacks: {
+    async signIn({user, account, profile}){
+      if(account?.provider !== "credentials"){
+        if(!profile?.email_verified) return false
+        return true
+      }
+      return true
+    },
+    async session({ session, token }) {
+      if (token.sub && session.user) {
+        session.user.id = token.sub;
+      }
+      if(token.role && session.user){
+        session.user.role = token.role as Role
+      }
+      return session;
+    },
+    async jwt({ token}) {
+      if(!token.sub) return token
+      const user = await prisma.user.findUnique({
+        where:{
+          id:token.sub
+        }
+      })
+      if(!user) return token
+      token.role = user.role;
+      
+      return token;
+    },
+  
+  }
+});
+```
+
+8. Créer le fichier **route.ts** pour l'API d'authentification
+
+```typescript
+// app/api/auth/[...nextauth]/route.ts
+import { handlers } from "@/auth"; // Referring to the auth.ts we just created
+export const { GET, POST } = handlers;
+```
+
+9. Créer le middleware pour protéger les routes
+
+```typescript
+// /middleware.ts
+import NextAuth from "next-auth";
+import authConfig from "./auth.config";
+import { DEFAULT_LOGIN_REDIRECT, apiAuthPrefix, authRoutes, publicRoutes } from "@/routes";
+import { NextResponse, NextRequest} from "next/server";
+import type { NextRequest } from "next/server";
+
+const { auth } = NextAuth(authConfig);
+export default auth(async function middleware(req: NextRequest) {
+  const { nextUrl } = req;
+  const isLoggedIn = !!(await auth());
+  const isApiAuthRoute = nextUrl.pathname.startsWith(apiAuthPrefix);
+  const isPublicRoute = publicRoutes.includes(nextUrl.pathname);
+  const isAuthRoute = authRoutes.includes(nextUrl.pathname);
+
+  if (isApiAuthRoute) {
+    return;
+  }
+
+  if (isAuthRoute) {
+    if (isLoggedIn) {
+      return NextResponse.redirect(new URL(DEFAULT_LOGIN_REDIRECT, nextUrl));
+    }
+    return;
+  }
+
+  if (!isLoggedIn && !isPublicRoute) {
+    return NextResponse.redirect(new URL("/login", nextUrl));
+  }
+
+  return;
+});
+
+export const config = {
+  matcher: ["/((?!.+\\.[\\w]+$|_next).*)", "/", "/(api|trpc)(.*)"],
+};
+```
+10. Extend user type
+
+```typescript
+// /next-auth.d.ts
+import { Role } from "@prisma/client";
+import { DefaultSession } from "next-auth";
+// On etend le type de la session de l'utlisateur
+export type ExtendUser = DefaultSession["user"] & {
+  role: Role
+
+}
+declare module "next-auth" {
+  interface Session{
+    user:ExtendUser
+  }
+}
+```
+
+## Session Management
+Un exemple de comment connecter un utilisateur
+```typescript
+"use client"
+import { signIn } from "next-auth/react"
+import { Button } from "@/src/components/ui/button";
+ 
+export function SignIn() {
+  return <button onClick={() => signIn()}>Sign In</button>
+}
+```
+Se connecter avec github
+```typescript
+"use client"
+import { signIn } from "next-auth/react"
+import { Button } from "@/src/components/ui/button";
+ 
+export function SignIn() {
+ <button onClick={() => signIn("github", { redirectTo: "/dashboard" })}>
+      Sign In
+    </button>
+}
+```
+Se déconnecter
+```typescript
+"use client"
+import { signOut } from "next-auth/react"
+ 
+export function SignOut() {
+  return <button onClick={() => signOut()}>Sign Out</button>
+}
+```
+
+Wrap a client component with `SessionProvider`
+```typescript
+"use client"
+ import { SessionProvider } from "next-auth/react"
+import { Dashboard } from "./Dashboard"
+ 
+export default function Administrator() {
+  return (
+    <SessionProvider>
+    // Dashboard is a client component
+      <Dashboard />
+    </SessionProvider>
+  )
+```
+
+## Configuration de Resend
+1. Installation de resend
+```bash
+npm i resend
+```
+2. Création du fichier **resend.ts**
+```typescript
+// /src/lib/resend.ts
+import { Resend } from 'resend';
+export const resend = new Resend(process.env.AUTH_RESEND_KEY)
+```
+3. Création du fichier **sendVerificationRequest.ts**
+```typescript
+// /src/lib/sendVerificationRequest.ts
+import { resend } from "./resend";
+import RaycastMagicLinkEmail from "@/emails/MagicLink";
+export async function sendVerificationRequest(params:any) {
+  const { identifier, url, provider } = params;
+  const { host } = new URL(url);
+try {
+    const data = await resend.emails.send({
+      from: provider.from,
+      to: [identifier],
+      subject: `Sign in to ${host}`,
+      react: RaycastMagicLinkEmail({ url, host }),
+      text: text({ url, host }),
+    });
+    return;
+    return { success: true, data };
+  } catch (error) {
+    throw new Error("Failed to send the verification email");
+  }
+}
+
+// Email Text body (fallback for email clients that don't render HTML, e.g. feature phones)
+function text({ url, host }: { url: string; host: string }) {
+  return `Sign in to ${host}\n${url}\n\n`;
+}
+```
+4. modification du fichier **auth.ts**
+Au niveau des providers:
+```typescript
+   providers:[
+   {    
+    id:"resend",
+    type:"email",
+    name: "email",
+    async sendVerificationRequest(params) {
+      await sendVerificationRequest(params);
+    }
+  },
+  ...authConfig.providers,
+  ],
+```
+## Configuration du middleware avec l'internationalisation(next-international)
+Si `next-international` est installé dans le projet alors utilise ce middleware
+```typescript
+// /middleware.ts
+import NextAuth from "next-auth";
+import authConfig from "./auth.config";
+import { DEFAULT_LOGIN_REDIRECT, apiAuthPrefix, authRoutes, publicRoutes } from "@/routes";
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
+
+/// middleware pour la traduction
+const I18nMiddleware = createI18nMiddleware({
+  locales: ["en", "fr"],
+  defaultLocale: "en",
+});
+
+const RoutePathnameRegex = (routes: string[]) => {
+  return RegExp(
+    `^(/(${["en", "fr"].join("|")}))?(${routes.flatMap((p) => (p === "/" ? ["", "/"] : p)).join("|")})/?$`,
+    "i"
+  );
+};
+const { auth } = NextAuth(authConfig);
+export default auth(async function middleware(req: NextRequest) {
+   const isLoggedIn = !!(await auth());
+  const isAuthRoute = RoutePathnameRegex(authRoutes).test(req.nextUrl.pathname);
+  const isPublicRoute = RoutePathnameRegex(publicRoutes).test(
+    req.nextUrl.pathname
+  );
+  if (isApiAuthRoute) {
+     return I18nMiddleware(req);
+  }
+  // S'il tente d'accéder à une route publique
+  if (isPublicRoute) {
+    // s'il est déjà authentifié
+    if (isLoggedIn) {
+      return NextResponse.redirect(new URL(DEFAULT_REDIRECT, nextUrl));
+    } else {
+      // Utilisateur non connecté : appliquer le middleware d'internationalisation
+      return I18nMiddleware(req);
+    }
+  }
+
+  if (isAuthRoute) {
+    // S'il est connecté
+    if (isLoggedIn) {
+      return Response.redirect(new URL(DEFAULT_LOGIN_REDIRECT, nextUrl));
+    }
+    return I18nMiddleware(req);
+  }
+
+  if (!isLoggedIn && !isPublicRoute) {
+    return Response.redirect(new URL("/login", nextUrl));
+  }
+
+  return I18nMiddleware(req);
+});
+
+export const config = {
+  matcher: ["/((?!.+\\.[\\w]+$|_next).*)", "/", "/(api|trpc)(.*)"],
+};
+```
+
+
+
+
+

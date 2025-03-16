@@ -1,0 +1,46 @@
+---
+description: how to use useMutation in my application
+globs: *.tsx
+---
+## Context:
+- TanStack Query (anciennement React Query) offre useMutation pour gérer les opérations de mutation (POST, PUT, DELETE) dans les applications React
+
+- useMutation est optimisé pour les opérations qui modifient des données, contrairement à useQuery qui est pour la récupération de données
+
+Tu peux l'utiliser comme ceci:
+```tsx
+import {toast} from "sonner"
+import {useMutation} from "@tanstack/react-query"
+import {LoadingButton} from "@/features/form/submit-button"
+ const mutationWithName = useMutation({
+    mutationFn: ({someParams}:{someParams:string}) => {
+      return fetch('/api/posts', {
+        method: 'POST',
+        body: JSON.stringify(nouveauPost),
+      });
+    },
+    onSuccess: (data) => {
+      toast.succcess("")
+      console.log('Opération réussie!', data);
+    },
+    onError: (error) => {
+       toast.error(error.message)
+       // Optionally refresh data or update state
+    },
+  });
+  return (
+   
+      <LoadingButton
+      onClick={() => mutationWithName.mutate({someParams}) }
+      loading={mutationWithName.isPending}
+        onClick={() => {
+          mutation.mutate({someParams});
+        }}
+        disabled={mutation.isPending}
+      >
+      save
+        {mutation.isPending ? 'En cours...' : 'Créer un post'}
+      </LoadingButton>
+    
+  );
+```

@@ -1,0 +1,200 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+## Context
+`useServerAction` is a custom React hook provided by ZSA that allows you to easily execute server actions from your client components. It handles the execution, transition, loading states, optimistic updates, and error handling for you.
+
+**input**
+- l'utilisateur doit préciser si un argument doit être bind ou pas
+- Il doit preciser si on doit utiliser la syntaxe d'une `form action` ou pas
+- S'il doit utiliser react-hook-form ou pas
+
+## Usage
+- `useServerAction` allows you to use this server action from within your client components.
+- `execute` executes the server action endpoint with the typesafe input directly from onClick.
+
+```tsx
+"use client"
+import {SubmitButton} from "@/src/features/submit-button"
+import {Loader2} from "lucide-react"
+import {deleteProductAction} from "./product.actions"
+import {toast} from "sonner"
+export default function DeleteProductButton(productId:{productId:string}) {
+ 
+  const { isPending, execute, data, error, isError } = useServerAction(deleteProductAction, {
+      bind: { 
+        productId
+      }, 
+     onError: ({ err }) => {
+      if(err.code === "INPUT_PARSE_ERROR") return toast.error(err.fieldErrors.id)
+      return toast.error(err)
+    },
+    onSuccess: ({ data }) => {
+      toast.success("successfully!")
+    },
+  }); 
+   return (       
+      <SubmitButton loading={isPending} onClick={async () => {
+          await execute()}}
+        >        
+        Supprimer
+        </SubmitButton>  
+  );
+}
+```
+Un autre exemple:
+
+```tsx
+"use client"
+import {Input} from "@/src/components/ui/input"
+import {SubmitButton} from "@/src/features/submit-button"
+import {Loader2} from "lucide-react"
+import {handleStatusProductAction} from "./product.actions"
+import {toast} from "sonner"
+export default function HandleStatusButton({productId, status}:{productId:string, status:string}) {
+ 
+  const { isPending, execute, data, error, isError } = useServerAction(handleStatusProductAction, {
+      bind: { 
+        productId
+      }, 
+     onError: ({ err }) => {
+      if(err.code === "INPUT_PARSE_ERROR") return toast.error(err.fieldErrors.id)
+      return toast.error(err)
+    },
+    onSuccess: ({ data }) => {
+      toast.success("handle status successfully!")
+    },
+  }); 
+   return (
+    <form>
+    <Input type="text" name="status" />
+    <SubmitButton loading={isPending} onClick={async () => {
+          await execute({status})}}
+        >        
+        Modifier
+        </SubmitButton>  
+    
+    </form>       
+      
+  );
+}
+```
+
+## Usage with form actions
+`useServerAction` also supports executing a form action directly. This is useful when you want to handle form submissions in your React components.
+```tsx
+"use client"
+import {SubmitButton} from "@/src/features/form/submit-button"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { useServerAction } from "zsa-react"
+import { produceNewMessage } from "./actions"
+
+export const ExecuteFormAction = () => {
+  const { isPending, executeFormAction, isSuccess, data, isError, error } =
+   useServerAction(deleteProductAction, {
+    
+     onError: ({ err }) => {
+      if(err.code === "INPUT_PARSE_ERROR") return toast.error(err.fieldErrors.id)
+      return toast.error(err)
+    },
+    onSuccess: ({ data }) => {
+      toast.success("successfully!")
+    },
+  }); 
+
+  return (
+    <Card className="not-prose">
+      <CardHeader>
+        <CardTitle>Send message</CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        <form className="flex flex-col gap-4" action={executeFormAction}>
+          <Input type="text" name="message" placeholder="Enter your message..." />
+          <SubmitButton className="w-full">
+            Send message
+          </SubmitButton>         
+        </form>
+      </CardContent>
+    </Card>
+  )
+}
+```
+
+
+## Usage with React Hook Form
+The useServerAction hook from the zsa-react library allows you to easily integrate ZSA with the popular react-hook-form library. Here's an example of how to use it:
+```tsx
+"use client"
+import {SubmitButton} from "@/src/features/form/submit-button"
+import { Button } from "@/src/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/ui/card"
+import { Input } from "@/src/components/ui/input"
+import { useServerAction } from "zsa-react"
+import { createMessage } from "./message.actions"
+
+export const ExecuteFormAction = () => {
+  const { isPending, executeFormAction, isSuccess, data, isError, error } =
+    useServerAction(createMessage,{
+        onError: ({ err }) => {
+      if(err.code === "INPUT_PARSE_ERROR") return toast.error(err.fieldErrors.message)
+      return toast.error(err)
+    },
+    onSuccess: ({ data }) => {
+      toast.success("successfully!")
+    },
+    }) 
+    const form = useForm<z.infer<typeof formSchema>>({
+    resolver: zodResolver(formSchema),
+    defaultValues: {
+      name: "",
+    },
+  })
+
+  async function onSubmit(values: z.infer<typeof formSchema>) {
+    const [data, err] = await execute(values) 
+
+    if (err) {
+      // show a toast or something
+      return
+    }
+
+    form.reset({ name: "" })
+  }
+
+  return (
+  <Card className="not-prose">
+      <CardHeader>
+        <CardTitle>Send message</CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+            <FormField
+              control={form.control}
+              name="name"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Message</FormLabel>
+                  <FormControl>
+                    <Input placeholder="your message" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <SubmitButton loading={isPending} className="w-full">
+            
+            </SubmitButton>
+          </form>
+        </Form>
+     
+      </CardContent>
+    </Card>
+  )
+}
+```
+
